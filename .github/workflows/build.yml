@@ -1,0 +1,95 @@
+name: Build Docker Image
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+permissions: 
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull Base Image
+        id: pull_base_image
+        run: |
+          docker pull linuxserver/code-server:latest
+
+      - name: Get Base Image Digest
+        id: get_base_digest
+        run: |
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' linuxserver/code-server:latest | sed -n 's/^.*@sha256:\([0-9a-f]\+\).*$/\1/p')
+          echo "BASE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "BASE_DIGEST_SHORT=${DIGEST:0:7}" >> $GITHUB_ENV
+
+      - name: Load Previous Digest
+        id: get_prev_digest
+        run: |
+          git checkout --orphan base_digest
+          if [ -f base_digest.txt ]; then
+            PREV_DIGEST=$(cat base_digest.txt)
+            echo "PREV_DIGEST=$PREV_DIGEST" >> $GITHUB_ENV
+          fi
+          git checkout master
+
+      - name: Determine Build Trigger
+        id: check_build_trigger
+        run: |
+          echo "Latest base digest: $BASE_DIGEST"
+          echo "Current base digest: ${PREV_DIGEST:-None}"
+          if [ "${{ github.event_name }}" != "cron" ]; then
+            echo "Build is not triggered by cron, forcing image build."
+          else
+            if [ "$BASE_DIGEST" != "$PREV_DIGEST" ]; then
+              echo "Base image digest changed, building new image."
+            else
+              echo "Base image unchanged, skipping build."
+              exit 0
+            fi
+          fi
+
+      - name: Get Latest Commit Hash
+        id: get_commit_hash
+        run: |
+          COMMIT_HASH_SHORT=$(git rev-parse --short=7 HEAD)
+          echo "COMMIT_HASH_SHORT=${COMMIT_HASH_SHORT}" >> $GITHUB_ENV
+
+      - name: Build & Push Multi-Architecture Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            hycqwq/code-server-devenv:base_${{ env.BASE_DIGEST_SHORT }}__commit_${{ env.COMMIT_HASH_SHORT }}
+            hycqwq/code-server-devenv:latest
+
+      - name: Update Current Digest
+        id: update_base_digest
+        run: |
+          git checkout --orphan base_digest
+          git rm -rf .
+          echo "$BASE_DIGEST" > base_digest.txt
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add base_digest.txt
+          git commit -m "Update to base_${BASE_DIGEST_SHORT}__commit_${COMMIT_HASH_SHORT}"
+          git push origin base_digest

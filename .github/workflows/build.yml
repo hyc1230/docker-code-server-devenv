@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: github.event_name != 'push' || !endsWith( github.event.head_commit.message, '~build' )
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -42,6 +43,7 @@ jobs:
       - name: Load Previous Digest
         id: get_prev_digest
         run: |
+          { git fetch origin base_digest; } || { echo "Branch base_digest does not exist."; }
           git checkout --orphan base_digest
           if [ -f base_digest.txt ]; then
             PREV_DIGEST=$(cat base_digest.txt)
@@ -54,7 +56,7 @@ jobs:
         run: |
           echo "Latest base digest: $BASE_DIGEST"
           echo "Current base digest: ${PREV_DIGEST:-None}"
-          if [ "${{ github.event_name }}" != "cron" ]; then
+          if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "Build is not triggered by cron, forcing image build."
           else
             if [ "$BASE_DIGEST" != "$PREV_DIGEST" ]; then

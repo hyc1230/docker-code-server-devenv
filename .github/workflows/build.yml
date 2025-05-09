@@ -43,8 +43,7 @@ jobs:
       - name: Load Previous Digest
         id: get_prev_digest
         run: |
-          { git pull origin base_digest; } || { echo "Branch base_digest does not exist."; }
-          git checkout --orphan base_digest
+          { git pull origin base_digest; git checkout base_digest; } || { echo "Branch base_digest does not exist."; git checkout --orphan base_digest; }
           if [ -f base_digest.txt ]; then
             PREV_DIGEST=$(cat base_digest.txt)
             echo "PREV_DIGEST=$PREV_DIGEST" >> $GITHUB_ENV
@@ -87,7 +86,7 @@ jobs:
       - name: Update Current Digest
         id: update_base_digest
         run: |
-          git checkout --orphan base_digest
+          { git checkout base_digest; } || { git checkout --orphan base_digest; }
           git rm -rf .
           echo "$BASE_DIGEST" > base_digest.txt
           git config --local user.name "github-actions[bot]"

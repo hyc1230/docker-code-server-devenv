@@ -62,21 +62,21 @@ jobs:
               echo "Base image digest changed, building new image."
             else
               echo "Base image unchanged, skipping build."
-              echo "SKIP_BUILD=true" >> $GITHUB_ENV
+              echo "SKIP_BUILD=true" >> $GITHUB_OUTPUT
               exit 0
             fi
           fi
-          echo "SKIP_BUILD=false" >> $GITHUB_ENV
+          echo "SKIP_BUILD=false" >> $GITHUB_OUTPUT
 
       - name: Get Latest Commit Hash
         id: get_commit_hash
-        if: github.env.SKIP_BUILD == 'false'
+        if: steps.check_build_trigger.outputs.SKIP_BUILD == 'false'
         run: |
           COMMIT_HASH_SHORT=$(git rev-parse --short=7 HEAD)
           echo "COMMIT_HASH_SHORT=${COMMIT_HASH_SHORT}" >> $GITHUB_ENV
 
       - name: Build & Push Multi-Architecture Image
-        if: github.env.SKIP_BUILD == 'false'
+        if: steps.check_build_trigger.outputs.SKIP_BUILD == 'false'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -89,7 +89,7 @@ jobs:
 
       - name: Update Current Digest
         id: update_base_digest
-        if: github.env.SKIP_BUILD == 'false'
+        if: steps.check_build_trigger.outputs.SKIP_BUILD == 'false'
         run: |
           { git checkout base_digest; } || { git checkout --orphan base_digest; }
           git rm -rf .
